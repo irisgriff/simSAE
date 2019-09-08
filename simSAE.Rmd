@@ -1,0 +1,76 @@
+---
+title: "Example"
+author: "Iris Griffith"
+date: "August 18, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(mase)
+```
+
+```{r}
+#load dataset
+data("black_hills_pop", package = "mase")
+dat_pop <- black_hills_pop %>%
+  mutate(domain = sign((s2-mean(s2)))*
+           ( round(log(abs(s1-mean(s1)) + 0.001) +
+                  log(abs(s2 - mean(s2)) + 0.001))))
+dat_samp <- sample(1:nrow(dat_pop), size = 200) %>%
+  
+pct_samp <- 1:15
+sim_obj <- lapply(pct_samp, function(i) {sim_sae(f, data = dat_samp,
+                                                 data_pop = dat_pop, "DOMAIN", 80,
+                                             prop = i/100)})
+```
+
+```{r sae2}
+#combine simulations
+mse_est_sim <- bind_rows(lapply(1:length(pct_samp), function(i) sim_obj[[i]][[2]]), .id = "k") %>%
+  mutate(k_j = paste(as.factor(k), "pct samp,", as.factor(j_ind), "j"))
+bias_var_sim <- bind_rows(lapply(1:length(pct_samp), function(i) sim_obj[[i]][[1]]), .id = "k") %>%
+  mutate(k_j = paste(as.factor(k), "pct samp,", as.factor(j_ind), "j"))%>%
+  arrange(estimator) %>%
+  cbind(avg_n_i = rep(mse_est_sim$avg_n_i, 4),
+        n_doms = rep(mse_est_sim$n_doms, 4))
+#plot 1
+  sae_plot <- ggplot(mse_est_sim, aes(x = avg_n_i*n_doms,
+                                     col = pct_samp[as.numeric(k)],
+                                     y = pct_better)) +
+  geom_jitter(alpha = 0.9) +
+  theme_minimal() +
+  scale_color_viridis_c() +
+  labs(x = "total sample size", y = "pct domains EBLUP better", col = "pct sampled")
+ggsave("sae1.png", sae_plot)
+#plot 2
+sae_plot <- ggplot(mse_est_sim, aes(x = bias_mse_est,
+                                    col = log10(avg_n_i*n_doms),#pct_samp[as.numeric(k)],
+                                    y = sd_mse_est)) +
+  geom_jitter(aes(frame = n_doms, alpha = 0.9)) +
+  theme_minimal() +
+  coord_fixed(ratio = 1) +
+  scale_color_viridis_c() +
+  labs(x = "Bias MSE estimate", y = "std dev MSE estimate", col = "log total sample size")
+sae_plot <- ggplotly(sae_plot) %>% animation_opts(1000,redraw = TRUE)
+htmlwidgets::saveWidget(sae_plot, "sae2.html")
+#plot 3
+sae_plot <- ggplot(bias_var_sim, aes(x = bias, y = sqrt(var), col = log(avg_n_i*n_doms))) +
+  geom_point(aes(frame = estimator, alpha = .14)) +
+  scale_color_viridis_c() +
+  theme_minimal() +
+  coord_fixed(ratio = 0.5) +
+  labs(x = "bias", "sd", col = "log total sample size")
+sae_plot <- ggplotly(sae_plot) %>% animation_opts(2500,redraw = FALSE, easing = "circle-in-out")
+htmlwidgets::saveWidget(sae_plot, "sae3.html")
+#plot 4
+sae_plot <- ggplot(bias_var_sim, aes(x = bias, y = sqrt(var), col = estimator,
+                                     frame = pct_samp[as.numeric(k)], text = "pct sampled")) +
+  geom_point(alpha = .35) +
+  scale_color_viridis_d() +
+  theme_minimal() +
+  coord_fixed(ratio = .5) +
+  labs(x = "Empirical Bias", y ="Empirical std dev", col = "total sample size", frame = "pct sampled")
+sae_plot <- ggplotly(sae_plot) %>% animation_opts(900,redraw = FALSE, easing = "circle-in-out")
+htmlwidgets::saveWidget(sae_plot, "sae4.html")
